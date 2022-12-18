@@ -1985,9 +1985,20 @@ int start_bambu_stream(char *camera_url)
             break;
         }
 
+        int sentPayload = 0;
         int result = 0;
+
+        char payload[1024] = {};
+        snprintf(payload, 1023, "{\"cmdtype\":4,\"sequence\":0,\"req\":{\"file\":\"%s\"}}", getenv("DL"));
+
         while (true) 
         {
+            if (!sentPayload) {
+                fprintf(stderr, ">> %s\n", payload);
+                lib.Bambu_SendMessage(tunnel, CTRL_TYPE, payload, strlen(payload));
+                sentPayload = 1;
+            }
+
             Bambu_Sample sample;
             result = lib.Bambu_ReadSample(tunnel, &sample);
 

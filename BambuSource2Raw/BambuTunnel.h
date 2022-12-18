@@ -1,6 +1,8 @@
 #ifndef _BAMBU__TUNNEL_H_
 #define _BAMBU__TUNNEL_H_
 
+static const int CTRL_TYPE     = 0x3001;
+
 #ifdef BAMBU_DYNAMIC
 #  define BAMBU_EXPORT
 #  define BAMBU_FUNC(x) (*x)
