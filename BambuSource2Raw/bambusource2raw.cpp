@@ -1935,7 +1935,22 @@ void bambu_log(void *ctx, int level, tchar const * msg)
     }
 }
 
-int start_bambu_stream(char *camera_url)
+bool stdin_wait()
+{
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+
+    select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
+
+    return (FD_ISSET(0, &fds));
+}
+
+int start_bambu_stream(char *camera_url, bool enable_video)
 {
     Bambu_Tunnel tunnel = NULL;
     int is_bambu_open = 0;
@@ -1964,7 +1979,7 @@ int start_bambu_stream(char *camera_url)
         size_t i;
         for (i = 0; i < BAMBUE_START_STREAM_RETRY_COUNT; i++)
         {
-            ret = lib.Bambu_StartStream(tunnel, true);
+            ret = lib.Bambu_StartStream(tunnel, enable_video);
             //fprintf(stderr, "Bambu_StartStream ret: 0x%x\n", ret);
 
             if (ret == 0)
@@ -1985,6 +2000,16 @@ int start_bambu_stream(char *camera_url)
             break;
         }
 
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(STDIN_FILENO, &fds); 
+
+        struct timeval select_timeout = {0, 100 * 1000};
+
+        char payload[4097];
+        int payload_pos = 0;
+        setvbuf(stdin, NULL, _IONBF, 0);
+
         int result = 0;
         while (true) 
         {
@@ -1999,11 +2024,34 @@ int start_bambu_stream(char *camera_url)
             } 
             else if (result == Bambu_would_block) 
             {
-#if defined(_MSC_VER) || defined(_WIN32)
-                Sleep(100);
-#else
+                while (stdin_wait()) {
+                    int c = getchar();
+                    if (c == EOF) {
+                        break;
+                    }
+                    if (c == 0 || c == '\r' || c == '\n' || payload_pos >= 4096) {
+                        if (payload_pos > 0) {
+                            payload[payload_pos] = 0;
+                            int inner_result = lib.Bambu_SendMessage(tunnel, CTRL_TYPE, payload, payload_pos);
+                            fprintf(stderr, "Sent CTRL_TYPE with result %x: %s\n", inner_result, payload);
+                            if (inner_result == Bambu_success)
+                            {
+                                payload_pos = 0;
+                            }
+                            else if (inner_result != Bambu_would_block)
+                            {
+                                result = -1;
+                                fprintf(stderr, "Bambu_SendMessage failed: 0x%x\n", inner_result);
+                                ret = -1;
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+                    payload[payload_pos++] = c;
+                }
+
                 usleep(100 * 1000);
-#endif
                 continue;
             } 
             else if (result == Bambu_stream_end) 
@@ -2013,8 +2061,8 @@ int start_bambu_stream(char *camera_url)
             } 
             else 
             {
+                fprintf(stderr, "Bambu_ReadSample failed: 0x%x\n", result);
                 result = -1;
-                fprintf(stderr, "ERROR_PIPE\n");
                 ret = -1;
             }
             break;
@@ -2082,6 +2130,7 @@ int main(int argc, char * argv[])
     int is_region_specified = 0;
     char *region = region_us;
     char camera_url[256] = {0};
+    bool enable_video = true;
 
     fprintf(stderr, "by hisptoot 2022.12.09\n");
 
@@ -2115,7 +2164,7 @@ int main(int argc, char * argv[])
     }
 
     int option;
-    while ((option = getopt(argc - arg_offset, &argv[arg_offset], "u:p:t:r:i:d:")) !=
+    while ((option = getopt(argc - arg_offset, &argv[arg_offset], "u:p:t:r:i:d:n")) !=
            -1) 
     {
         switch (option) 
@@ -2144,6 +2193,10 @@ int main(int argc, char * argv[])
         case 'd':
             fprintf(stderr, "dev_id: %s\n", optarg);
             dev_id = optarg;
+            break;
+        case 'n':
+            fprintf(stderr, "disable video stream\n");
+            enable_video = false;
             break;
         default:
             break;
@@ -2323,7 +2376,7 @@ int main(int argc, char * argv[])
                 break;
             }
             //fprintf(stderr, "camera_url: %s\n", camera_url);
-            ret = start_bambu_stream(camera_url);
+            ret = start_bambu_stream(camera_url, enable_video);
             if (!ret)
             {
                 fprintf(stderr, "start_bambu_stream failed %d\n", ret);

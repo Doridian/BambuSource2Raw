@@ -17,6 +17,8 @@
 #  define BAMBU_FUNC(x) x
 #endif // BAMBU_DYNAMIC
 
+static const int CTRL_TYPE     = 0x3001;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
