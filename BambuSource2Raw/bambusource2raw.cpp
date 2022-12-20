@@ -1964,7 +1964,7 @@ int start_bambu_stream(char *camera_url)
         size_t i;
         for (i = 0; i < BAMBUE_START_STREAM_RETRY_COUNT; i++)
         {
-            ret = lib.Bambu_StartStream(tunnel, true);
+            ret = lib.Bambu_StartStream(tunnel, false);
             //fprintf(stderr, "Bambu_StartStream ret: 0x%x\n", ret);
 
             if (ret == 0)
